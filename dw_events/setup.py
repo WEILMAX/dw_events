@@ -9,7 +9,7 @@ test_requirements = ['pytest>=3', ]
 
 setup(
     name="dw_events",
-    author_email='maximillian.f.weil@gmail.be',
+    author_email='maximillian.f.weil@gmail.com',
     python_requires='>=3.6',
     packages=find_packages(include=['dw_events', 'dw_events.*']),
     install_requires=requirements,

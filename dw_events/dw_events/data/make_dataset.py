@@ -1,30 +1,45 @@
 # -*- coding: utf-8 -*-
-import click
-import logging
-from pathlib import Path
+import datetime
+import os
+from typing import Union
+from azure.storage.blob import BlobServiceClient
 from dotenv import find_dotenv, load_dotenv
+from utils import make_dt_list
+from dataclasses import dataclass
 
 
-@click.command()
-@click.argument("input_filepath", type=click.Path(exists=True))
-@click.argument("output_filepath", type=click.Path())
-def main(input_filepath, output_filepath):
-    """Runs data processing scripts to turn raw data from (../raw) into
-    cleaned data ready to be analyzed (saved in ../processed).
+@dataclass
+class DataGetter:
     """
-    logger = logging.getLogger(__name__)
-    logger.info("making final data set from raw data")
+    A class for getting data from a database.
+    """
+    start: datetime.datetime
+    stop: datetime.datetime
+    container_name: str = 'data-primary-smartbridge'
+    connection_string_name: str = 'SCB_CONNECTION_STR'
 
 
-if __name__ == "__main__":
-    log_fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    logging.basicConfig(level=logging.INFO, format=log_fmt)
+    def __post_init__(self):
+        load_dotenv(find_dotenv())
+        self.connect_str: Union[str, None] = \
+            os.getenv(self.connection_string_name)
+        if self.connect_str is None:
+            raise \
+                ValueError(
+                    f'{self.connection_string_name}\
+                        not found as environmental variable.'
+                    )
+        else:
+            self.blob_service_client: BlobServiceClient = \
+                BlobServiceClient.from_connection_string(
+                    self.connect_str)
+            self.container_client = \
+                self.blob_service_client.get_container_client(
+                    container=self.container_name)
+    
 
-    # not used in this stub but often useful for finding various files
-    project_dir = Path(__file__).resolve().parents[2]
-
-    # find .env automagically by walking up directories until it's found, then
-    # load up the .env entries as environment variables
-    load_dotenv(find_dotenv())
-
-    main()
+    def get_strain_data(self, interval:int = 600):
+        """
+        Get strain data from the database.
+        """
+        pass
