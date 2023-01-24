@@ -106,14 +106,11 @@ def copy_gzip_to_local(
     return strain_signal.as_df(style="timeseries")  # type: ignore
 
 
-def get_dataframe_str_subset(
-    data: pd.DataFrame,
-    strain_line: str
-    ) -> pd.DataFrame:
+def get_dataframe_str_subset(data: pd.DataFrame, strain_line: str) -> pd.DataFrame:
     """get a subset of a pandas dataframe with a string in column name
 
     Args:
         data (pd.DataFrame): dataframe with strain data
         strain_line (str): Name of the strain line to select
     """
-    return data.filter(regex=f'{strain_line}')
+    return data.filter(regex=f"{strain_line}")

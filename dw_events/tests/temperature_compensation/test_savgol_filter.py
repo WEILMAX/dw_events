@@ -6,67 +6,58 @@ import datetime
 import pandas as pd
 from dw_events.temperature_compensation.savgol_filter import SavgolTempComp
 
-
-def test_resample_data():
-    """
-    Test resampling of data
-    """
-    # Create a test DataFrame
-    data = pd.DataFrame(
-        {"A": [1, 2, 3, 4, 5], "B": [2, 3, 4, 5, 6]},
-        index=[
-            datetime.datetime(2020, 12, 31, 23, 59, 50, 0),
-            datetime.datetime(2020, 12, 31, 23, 59, 50, 50),
-            datetime.datetime(2020, 12, 31, 23, 59, 51, 0),
-            datetime.datetime(2020, 12, 31, 23, 59, 51, 50),
-            datetime.datetime(2020, 12, 31, 23, 59, 52, 0),
-        ],
-    )
-    # Create an instance of the SavgolTempComp class
-    temp_comp = SavgolTempComp(data)
-    # Test the resample_data() method
-    temp_comp.resample_data(freq="1s")
-    assert temp_comp.data.index.freq == "S"  # type: ignore
+import pytest
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+from dw_events.temperature_compensation.savgol_filter import SavgolTempComp
 
 
-def test_apply_filter():
+@pytest.fixture
+def test_data():
     """
-    Test applying savgol filter
+    Create a dataset for the tests.
     """
-    data = pd.DataFrame(
-        {"A": [1, 2, 3, 4, 5], "B": [2, 3, 4, 5, 6]},
-        index=[
-            datetime.datetime(2020, 12, 31, 23, 59, 50),
-            datetime.datetime(2020, 12, 31, 23, 59, 51),
-            datetime.datetime(2020, 12, 31, 23, 59, 52),
-            datetime.datetime(2020, 12, 31, 23, 59, 53),
-            datetime.datetime(2020, 12, 31, 23, 59, 54),
-        ],
-    )
-    temp_comp = SavgolTempComp(data)
-    filtered_data = temp_comp.apply_filter()
-    # check if filter is applied
-    assert (filtered_data != data).any().any()
-    # check if filtered data has same columns as original data
-    assert (filtered_data.columns == data.columns).all()
-    # check if filtered data has same index as original data
-    assert (filtered_data.index == data.index).all()
+    data = {
+        "data1": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        "data2": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    }
+    index = [datetime.now() + timedelta(seconds=i) for i in range(10)]  # type: ignore
+    return pd.DataFrame(data, index=index)
 
 
-def test_default_window_length_and_polyorder():
+def test_resample_data(test_data):
     """
-    Test if the default window_length and polyorder are as expected
+    Test data resampling.
     """
-    data = pd.DataFrame(
-        {"A": [1, 2, 3, 4, 5], "B": [2, 3, 4, 5, 6]},
-        index=[
-            datetime.datetime(2020, 12, 31, 23, 59, 50),
-            datetime.datetime(2020, 12, 31, 23, 59, 51),
-            datetime.datetime(2020, 12, 31, 23, 59, 52),
-            datetime.datetime(2020, 12, 31, 23, 59, 53),
-            datetime.datetime(2020, 12, 31, 23, 59, 54),
-        ],
-    )
-    temp_comp = SavgolTempComp(data)
-    assert temp_comp.window_length == 3
-    assert temp_comp.polyorder == 1
+    savgol = SavgolTempComp(test_data)
+    resampled_data = savgol.resample_data(freq="1s")
+    assert resampled_data.index.freq == "1s"
+    assert len(resampled_data) == 10
+
+
+def test_filter_data(test_data):
+    """
+    Test applying savgol filter.
+    """
+    savgol = SavgolTempComp(test_data)
+    filtered_data = savgol.filter_data(freq="1s")
+    assert len(filtered_data) == 10
+    for column in test_data.columns:
+        assert (
+            filtered_data[column].values.tolist() != test_data[column].values.tolist()
+        )
+
+
+def test_apply_filter(test_data):
+    """
+    Test applying the savgol temperature compensation.
+    """
+    savgol = SavgolTempComp(test_data)
+    compensated_data = savgol.apply_filter(freq="1s")
+    assert len(compensated_data) == 10
+    for column in test_data.columns:
+        assert (
+            compensated_data[column].values.tolist()
+            != test_data[column].values.tolist()
+        )
