@@ -71,12 +71,12 @@ class SavgolTempComp:
         window_length = self.window_length
         if min_max == "min":
             self.filtered_data = self.filtered_data.resample(
-                str(min_max_freq) + "s"
+                f"{min_max_freq}s"
             ).min()
             window_length = int(self.window_length / min_max_freq)
         elif min_max == "max":
             self.filtered_data = self.filtered_data.resample(
-                str(min_max_freq) + "s"
+                f"{min_max_freq}s"
             ).max()
             window_length = int(self.window_length / min_max_freq)
         for column in self.data.columns:
