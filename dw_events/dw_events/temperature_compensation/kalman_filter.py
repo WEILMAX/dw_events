@@ -6,50 +6,63 @@ Author: Maximillian Weil
 """
 from dataclasses import dataclass, field
 
-import numpy as np
 import pandas as pd
 
 
-class KalmanFilter:
+@dataclass
+class KalmanFilter1D:
     """
-    A simple Kalman filter implementation for data smoothing.
+    A simple Kalman filter implementation for 1D data smoothing.
 
     Attributes:
-    process_variance (float): The variance of the process noise, which represents the uncertainty
-        of the system's state transition model.
-    estimated_measurement_variance (float): The variance of the measurement noise, which represents
-        the uncertainty of the measurement model.
-    posteri_estimate (float): The latest estimated measurement, initialized to 0.0.
-    posteri_error_estimate (float): The latest estimated error of the measurement, initialized to 1.0.
+    process_variance (float): The variance of the process noise,
+        which represents the uncertainty of the system's state transition model (=Q).
+    estimated_measurement_variance (float): The variance of the measurement noise,
+        which represents the uncertainty of the measurement model (=R).
+    posteri_estimate (float, optional): The latest estimated measurement,
+        initialized to 0.0.
+    posteri_error_estimate (float, optional): The latest estimated error of the measurement,
+        initialized to 1.0.
     """
-    def __init__(self, process_variance, estimated_measurement_variance):
-        """
-        Initialize the Kalman filter with the process variance and estimated measurement variance.
+
+    process_variance: float  # Q
+    estimated_measurement_variance: float  # R
+    posteri_estimate:float = 0.0  # x^_0
+    posteri_error_estimate:float = 1.0  # P_0
+
+    def input_latest_noisy_measurement(
+        self,
+        measurement: float,
+        input: float = 0.0,
+        A_matrix: float = 1.0,
+        B_matrix: float = 1.0):
+        """Input the latest noisy measurement and
+        update the posteri estimate and posteri error estimate.
 
         Args:
-        process_variance (float): The variance of the process noise.
-        estimated_measurement_variance (float): The variance of the measurement noise.
+        measurement (float): The latest noisy measurement (=y_k).
         """
-        self.process_variance = process_variance
-        self.estimated_measurement_variance = estimated_measurement_variance
-        self.posteri_estimate = 0.0
-        self.posteri_error_estimate = 1.0
+        ## Time Update (Prediction)
+        # x_hat_predicted = A * x_hat_posteri + B * u
+        priori_estimate = A_matrix * self.posteri_estimate + B_matrix * input
+        # P_predicted = A * P_posteri * A.T + Q
+        priori_error_estimate = \
+            A_matrix * self.posteri_error_estimate * A_matrix\
+            + self.process_variance
 
-    def input_latest_noisy_measurement(self, measurement):
-        """
-        Input the latest noisy measurement and update the posteri estimate and posteri error estimate.
-
-        Args:
-        measurement (float): The latest noisy measurement.
-        """
-        priori_estimate = self.posteri_estimate
-        priori_error_estimate = self.posteri_error_estimate + self.process_variance
-
-        blending_factor = priori_error_estimate / (priori_error_estimate + self.estimated_measurement_variance)
-        self.posteri_estimate = priori_estimate + blending_factor * (measurement - priori_estimate)
+        ## Measurement Update (Correction)
+        # K = P_predicted * H.T * (H * P_predicted * H.T + R).inverse()
+        blending_factor = priori_error_estimate / (
+            priori_error_estimate + self.estimated_measurement_variance
+        )
+        # x_hat_posteri = x_hat_predicted + K * (z - H * x_hat_predicted)
+        self.posteri_estimate = priori_estimate + blending_factor * (
+            measurement - priori_estimate
+        )
+        # P_posteri = (I - K * H) * P_predicted
         self.posteri_error_estimate = (1 - blending_factor) * priori_error_estimate
 
-    def get_latest_estimated_measurement(self):
+    def get_latest_estimated_measurement(self) -> float:
         """
         Get the latest estimated measurement.
 
@@ -58,50 +71,42 @@ class KalmanFilter:
         """
         return self.posteri_estimate
 
-        
-@dataclass
-class KalmanTempComp:
-    """A class to apply the Kalman filter as
-    a temperature compensation method for strain data.
-    """
-    measurement_uncertainty: float = 1e-3 # R
-    delta: float = 1e-4
-    dimension = 1
+    def filter_data(self, strain_data: pd.Series) -> pd.Series:
+        """Apply the kalman filter to the strain data.
 
+        Args:
+        strain_data (pd.Series): The strain data to apply the kalman filter to.
 
-    def __post_init__(self):
-        self.compensated_data: pd.DataFrame = field(init=False)
-        self.noise_covariance\
-            = self.delta / (1 - self.delta) * np.eye(self.dimension) # Q
-        self.state = np.zeros((self.dimension, 1)) # x
-        self.uncertainty = np.zeros((self.dimension, self.dimension)) # P
+        Returns:
+        pd.Series: The filtered strain data.
+        """
+        filtered_data_values = []
+        for index, value in strain_data.iteritems():
+            self.input_latest_noisy_measurement(value)
+            filtered_data_values.append(
+                self.get_latest_estimated_measurement()
+            )
+        filtered_data = \
+            pd.Series(
+                filtered_data_values,
+                index=strain_data.index,
+                dtype=float
+            )
+        return filtered_data
     
-    def iterate(self, measurement):
-        observation_matrix = np.array([measurement])[None]
+    def apply_filter(
+        self,
+        strain_data: pd.Series
+        ) -> pd.Series:
+        """Apply the kalman filter for
+        temperature compensation of the strain data.
 
-        # Time Update (Prediction)
-        state_hat = self.state[:, -1][..., None]
-        uncertainty_hat = self.uncertainty + self.noise_covariance
+        Args:
+        strain_data (pd.Series): The strain data to apply the kalman filter to.
 
-        # Measurement Update (Correction)
-        prediction_uncertainty = uncertainty_hat.dot(observation_matrix.T)
-        kalman_gain_factor = \
-            prediction_uncertainty\
-            / (
-                observation_matrix.dot(prediction_uncertainty)\
-                + self.measurement_uncertainty
-            ) # Kn
-        measurement_hat = observation_matrix.dot(state_hat)
-        state = state_hat + kalman_gain_factor * (measurement - measurement_hat)
-        self.uncertainty = \
-            (
-                np.eye(self.dimension) \
-                - kalman_gain_factor.dot(observation_matrix)
-            ).dot(uncertainty_hat)
-        self.state = np.concatenate((self.state, state), axis=1)
-
-        return state, self.uncertainty, kalman_gain_factor, measurement_hat
-        
-        
-    
-
+        Returns:
+        pd.Series: The filtered strain data.
+        """
+        filtered_data = self.filter_data(strain_data)
+        compensated_data = strain_data - filtered_data
+        return compensated_data
