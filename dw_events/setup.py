@@ -4,7 +4,7 @@
 
 from setuptools import find_packages, setup
 
-requirements = ['pandas', 'scikit-learn',  'dataclasses']
+requirements = ['pandas', 'scikit-learn',  'dataclasses', 'typing']
 test_requirements = ['pytest>=3', ]
 
 setup(
