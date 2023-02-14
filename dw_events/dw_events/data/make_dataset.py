@@ -99,3 +99,5 @@ class DataGetter:
         if len(self.merged_signals) == 0:
             self.get_strain_data()
         return self.merged_signals.filter(regex=f"{strain_line}")
+
+

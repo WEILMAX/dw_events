@@ -102,8 +102,12 @@ def copy_gzip_to_local(
         except FileNotFoundError as exc:
             print("File not found:", exc, f". Failed to download {azure_path}")
             os.remove(local_path)
-    strain_signal = fbgs.read_fbgs(local_path, location=location)
-    return strain_signal.as_df(style="timeseries")  # type: ignore
+    try:
+        strain_signal = fbgs.read_fbgs(local_path, location=location)
+        return strain_signal.as_df(style="timeseries")  # type: ignore
+    except AttributeError as exc:
+        print("AttributeError:", exc, f". Failed to read {local_path}")
+        return pd.DataFrame()
 
 
 def get_dataframe_str_subset(data: pd.DataFrame, strain_line: str) -> pd.DataFrame:
