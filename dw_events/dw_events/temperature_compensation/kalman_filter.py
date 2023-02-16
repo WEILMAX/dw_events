@@ -5,7 +5,7 @@ as a temperature compensation method.
 Author: Maximillian Weil
 """
 from dataclasses import dataclass, field
-from typing import List, Union
+from typing import List, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -13,6 +13,155 @@ import pandas as pd
 
 @dataclass
 class KalmanFilter:
+    """
+    A simple Kalman filter implementation for multidimensional data smoothing.
+
+    Attributes:
+    process_variance (float or np.ndarray): The variance of the process noise,
+        which represents the uncertainty of the system's state transition model (=Q).
+    measurement_variance (float or np.ndarray): The variance of the measurement noise,
+        which represents the uncertainty of the measurement model (=R).
+    initial_state (float or np.ndarray): The initial state of the system.
+    initial_error_covariance (float or np.ndarray): The initial error covariance matrix.
+    a_matrix (float or np.ndarray): The state transition matrix.
+    b_matrix
+    c_matrix (float or np.ndarray): The measurement matrix.
+    """
+
+    process_variance: Union[float, np.ndarray]  # Q
+    measurement_variance: Union[float, np.ndarray]  # R
+    posteri_state: np.ndarray
+    posteri_error_covariance: np.ndarray
+    a_matrix: np.ndarray = np.array([[1.0]])
+    b_matrix: np.ndarray = np.array([[0.0]])
+    c_matrix: np.ndarray = np.array([[1.0]])
+
+    def input_latest_noisy_measurement(
+        self,
+        measurement: Union[float, np.ndarray],
+        input: np.ndarray = np.array([[0.0]]),
+    ) -> Union[float, np.ndarray]:
+        """Input the latest noisy measurement and
+        update the posteri estimate and posteri error estimate.
+
+        Args:
+        measurement (float or np.ndarray): The latest noisy measurement (=y_k).
+        """
+        # Time Update (Prediction)
+        # x_hat_predicted = A * x_hat_posteri + B * u
+        priori_state = self.a_matrix @ self.posteri_state + self.b_matrix @ input
+        # P_predicted = A * P_posteri * A.T + Q
+        priori_error_covariance = \
+            self.a_matrix @ self.posteri_error_covariance @ self.a_matrix.T \
+            + self.process_variance
+
+        # Measurement Update (Correction)
+        # K = P_predicted * H.T * (H * P_predicted * H.T + R).inverse()
+        innovation_covariance = \
+            self.c_matrix @ priori_error_covariance @ self.c_matrix.T \
+            + self.measurement_variance
+        kalman_gain = \
+            priori_error_covariance @ self.c_matrix.T \
+            @ np.linalg.inv(innovation_covariance)
+        
+        # x_hat_posteri = x_hat_predicted + K * (z - H * x_hat_predicted)
+        innovation = measurement - self.c_matrix @ priori_state
+        self.posteri_state = priori_state + kalman_gain @ innovation
+
+        # P_posteri = (I - K * H) * P_predicted
+        self.posteri_error_covariance = \
+            (np.eye(self.a_matrix.shape[0]) - kalman_gain @ self.c_matrix) \
+            @ priori_error_covariance
+        
+        return self.posteri_state
+
+    def get_latest_estimated_state(self) -> Union[float, np.ndarray]:
+        """
+        Get the latest estimated state.
+
+        Returns:
+        float or np.ndarray: The latest estimated state.
+        """
+        return self.posteri_state
+
+    def filter_data_quick(
+        self,
+        strain_data: pd.DataFrame,
+        temperature_data: pd.DataFrame = pd.DataFrame()
+        ) -> pd.DataFrame:
+        """_summary_
+
+        Args:
+            strain_data (pd.DataFrame): _description_
+            temperature_data (pd.DataFrame, optional): _description_. Defaults to pd.DataFrame().
+
+        Returns:
+            pd.DataFrame: _description_
+        """        
+        def filter_row(
+            row: pd.Series
+            ) -> Union[float, np.ndarray]:
+            """_summary_
+
+            Args:
+                measurement_input (pd.DataFrame): _description_
+
+            Returns:
+                Union[float, np.ndarray]: _description_
+            """    
+            measurement = np.array([row]).T
+            input = np.array([temperature_data.loc[row.name]]).T
+            posteri_state_idx = self.input_latest_noisy_measurement(measurement, input)
+            return posteri_state_idx[0]
+
+        filtered_data = strain_data.apply(filter_row, axis=1)
+        return filtered_data.explode()
+
+    def filter_data(
+        self,
+        strain_data: pd.DataFrame,
+        temperature_data: pd.DataFrame = pd.DataFrame()
+        ) -> pd.DataFrame:
+        """
+        Apply the Kalman filter to the data.
+
+        Args:
+        data (List[pd.Series]): A list of pandas series, where each series is a set of
+            observations for a different variable.
+
+        Returns:
+        List[pd.Series]: A list of filtered pandas series, where each series corresponds
+            to the filtered observations for the corresponding variable.
+        """
+
+        # Create a list to hold the filtered data for each variable
+        filtered_data = pd.DataFrame()
+
+        # Loop over the time steps
+        for index in strain_data.index:
+            measurement = np.array([strain_data.loc[index].values])
+            input = np.array([temperature_data.loc[index].values]).T
+            
+            self.input_latest_noisy_measurement(
+                measurement,
+                input
+            )
+            posteri_state_idx = self.get_latest_estimated_state()
+
+            # Add the filtered data
+            filtered_data = \
+                pd.concat([
+                        filtered_data,
+                        pd.DataFrame(
+                            posteri_state_idx[0],
+                            index=[index],
+                            columns = [strain_data.columns, 'delta_'+strain_data.columns])
+                        ], axis = 0)
+        return filtered_data
+
+
+@dataclass
+class KalmanFilter_old:
     """
     A simple Kalman filter implementation for multidimensional data smoothing.
     """
