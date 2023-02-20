@@ -34,7 +34,8 @@ class ParticleFilter:
     def __post_init__(self):
         self.particles = np.zeros((self.num_particles, 2))
         self.weights = np.ones(self.num_particles) / self.num_particles
-        self.expon_distr = sp.stats.expon(-0.5, self.r_measurement_noise)
+        self.expon_distr = sp.stats.expon(-0.2, self.r_measurement_noise)
+        #self.expon_distr = sp.stats.gamma(1.02, scale=self.r_measurement_noise, loc = -0.3)
 
 
     def create_gaussian_particles(
