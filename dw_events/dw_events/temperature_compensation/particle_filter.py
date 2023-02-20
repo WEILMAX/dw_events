@@ -1,6 +1,7 @@
 """
 particle_filter.py is a module for applying the particle filter
 as a temperature compensation method.
+Source: https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python/blob/master/12-Particle-Filters.ipynb
 -------------------------------------------------------------------------
 Author: Maximillian Weil
 """
@@ -9,7 +10,8 @@ from typing import List, Tuple
 import scipy as sp
 import numpy as np
 import pandas as pd
-
+import cProfile
+import pstats
 
 @dataclass
 class ParticleFilter:
@@ -27,10 +29,13 @@ class ParticleFilter:
     r_measurement_noise: float = 0.1
     q_process_noise: np.ndarray = np.array([0.1, 0.1])
     scale: float = 1
+    predictions: np.ndarray = field(init=False)
 
     def __post_init__(self):
         self.particles = np.zeros((self.num_particles, 2))
         self.weights = np.ones(self.num_particles) / self.num_particles
+        self.expon_distr = sp.stats.expon(-0.5, self.r_measurement_noise)
+
 
     def create_gaussian_particles(
         self,
@@ -59,20 +64,23 @@ class ParticleFilter:
     
     def update(
         self,
-        y_measurement
+        y_measurement,
+        loading:str = 'tension'
         ) -> None:
         """ incorporate measurement y (measured temperature)
         with measurement noise r (std measured temperature)"""
         # compute likelihood of measurement
-        distance = self.particles[:, 0] - y_measurement
+        if loading == 'tension':
+            distance = y_measurement - self.particles[:, 0]
+        elif loading == 'compression':
+            distance = self.particles[:, 0] - y_measurement
+        else:
+            raise ValueError('Loading must be either "tension" or "compression"')
         self.weights *= \
-            sp.stats.expon(
-                distance,
-                self.r_measurement_noise
-            ).pdf(self.particles[:, 0])
-
+            self.expon_distr.pdf(distance)
         self.weights += 1.e-300      # avoid round-off to zero
         self.weights /= sum(self.weights) # normalize
+        #print(self.weights, self.particles[:, 0], y_measurement)
 
     def estimate(
         self
@@ -81,50 +89,72 @@ class ParticleFilter:
         pos = self.particles[:, 0]
         mean = np.average(pos, weights=self.weights, axis=0)
         var  = np.average((pos - mean)**2, weights=self.weights, axis=0)
+        #print(mean, var)
         return mean, var
     
-    def simple_resample(self):
+    def simple_resample(self, loading='tension'):
         """resample particles with replacement according to weights"""
         cumulative_sum = \
             np.cumsum(self.weights)
         # normalize the cumulative sum to be in [0, 1]
         cumulative_sum /= cumulative_sum[self.num_particles-1]
         randoms = np.random.rand(self.num_particles)
-        indexes = \
-            np.searchsorted(cumulative_sum, randoms)
-        self.particles[:] = \
-            self.particles[indexes] \
-            - np.array([
-                np.random.exponential(scale=self.scale/np.abs(self.particles[indexes, 0]), size=self.num_particles),
-                np.random.exponential(scale=self.scale/np.abs(self.particles[indexes, 1]), size=self.num_particles)
-            ]).T
+        indexes = np.searchsorted(cumulative_sum, randoms)
+        noise_scale = self.scale / np.abs(self.particles[indexes])
+        noise = np.random.exponential(
+            scale=noise_scale,
+            size=(self.num_particles, 2))
+        if loading == 'compression':
+            self.particles[:] = self.particles[indexes] + noise
+        elif loading == 'tension':
+            self.particles[:] = self.particles[indexes] - noise
+        else:
+            raise ValueError('Loading must be either "tension" or "compression"')
         self.weights[:] = self.weights[indexes]
         self.weights /= np.sum(self.weights)
-
+        #print(self.particles[:,0], self.weights)
 
     def filter(
         self,
         measurements: np.ndarray,
-        input: np.ndarray = None,
+        input: np.ndarray = np.array([]),
+        loading: str = 'tension'
         ) -> np.ndarray:
         """Filter the data using the particle filter.
         """
-        predictions = []
+        self.predictions = np.zeros(len(measurements))
         mean = np.array([measurements[0], 0])
         std = np.array([0.1, 0.1])
-        print(mean, std)
         self.create_gaussian_particles(mean, std)
         for i in range(len(measurements)):
             self.predict(input[i])
             #print(self.particles, self.weights)
-            self.update(measurements[i])
+            self.update(measurements[i], loading=loading)
             #print(self.particles, self.weights)
-            self.simple_resample()
+            self.simple_resample(loading=loading)
             #print(self.particles, self.weights)
             prediction, var = self.estimate()
             #print(self.particles, self.weights)
-            predictions.append(prediction)
-        return np.array(predictions)
+            self.predictions[i] = prediction
+        return self.predictions
+    
+    def profile_filter(
+            self, 
+            measurements: np.ndarray, 
+            input: np.ndarray = np.array([]), 
+            loading: str = 'tension'
+        ):
+        """Profile the filter.
+        """
+        cProfile.runctx(
+            'self.filter(measurements, input, loading)',
+            globals(),
+            locals(),
+            'profile_results'
+        )
+        p = pstats.Stats('profile_results')
+        p.strip_dirs().sort_stats('cumulative').print_stats(10)
+        p.strip_dirs().sort_stats('time').print_stats(10)
 
 
 @dataclass
@@ -149,7 +179,7 @@ class ParticleFilter_GPT:
     def __post_init__(self):
         self.particles = np.array(self.initial_particles)
 
-    def likelihood_function(self, y, x, measurement_noise, alpha=1):
+    def likelihood_function(self, y, x, measurement_noise, alpha=1.0):
         z = (y - x) / measurement_noise
         if measurement_noise > 0:
             if z >= 0:
