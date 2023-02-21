@@ -40,15 +40,16 @@ strain_line_signals = datagetter.get_dataframe_str_subset(strain_line)
 temperature_data = datagetter.get_dataframe_str_subset('TFBG')
 temperature_data = temperature_data.filter(regex=temperature_sensor)
 
-num_particles = 1000,
-r_measurement_noise = 1e3,
-q_process_noise = np.array([3e-1, 1e-1]),
+num_particles = 2000
+r_measurement_noise = 1e3
+q_process_noise = np.array([2e-1, 1e-1])
 scale = 1
-
+loc = -0.5
+loading = 'compression'
 
 for sensor in range(len(strain_line_signals.columns)):
     Tb = temperature_data
-    delta_Tb = Tb - Tb.shift(int(1))
+    delta_Tb = (Tb - Tb.shift(int(20*60)))/60
 
     measurements = pd.DataFrame(
         {
@@ -62,15 +63,19 @@ for sensor in range(len(strain_line_signals.columns)):
             'delta_Tb': delta_Tb.values[:,0]
         }, index = measurements.index)
 
+    measurements = measurements.resample('1s').mean().dropna()
+    inputs = inputs.dropna().resample('1s').mean().dropna().loc[measurements.index]
+
 
     pf = ParticleFilter(
         num_particles = num_particles,
         r_measurement_noise = r_measurement_noise,
         q_process_noise = q_process_noise,
-        scale = scale
+        scale = scale,
+        loc = loc
     )
 
-    filtered_data = pf.filter(measurements.values, inputs.values)
+    filtered_data = pf.filter(measurements.values, inputs.values, loading = loading)
     filtered_data = pd.DataFrame(
         filtered_data,
         index = measurements.index,
