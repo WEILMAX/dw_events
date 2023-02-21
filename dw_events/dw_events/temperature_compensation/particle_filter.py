@@ -29,13 +29,14 @@ class ParticleFilter:
     r_measurement_noise: float = 0.1
     q_process_noise: np.ndarray = np.array([0.1, 0.1])
     scale: float = 1
+    loc: float = -0.1
     predictions: np.ndarray = field(init=False)
 
     def __post_init__(self):
         self.particles = np.zeros((self.num_particles, 2))
         self.weights = np.ones(self.num_particles) / self.num_particles
-        self.expon_distr = sp.stats.expon(-0.2, self.r_measurement_noise)
-        #self.expon_distr = sp.stats.gamma(1.02, scale=self.r_measurement_noise, loc = -0.3)
+        #self.expon_distr = sp.stats.expon(-0.1, self.r_measurement_noise)
+        self.expon_distr = sp.stats.gamma(1 - self.loc/self.r_measurement_noise, scale=self.r_measurement_noise, loc = self.loc)
 
 
     def create_gaussian_particles(

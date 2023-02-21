@@ -32,22 +32,22 @@ except:
     #strain_data.to_parquet(data_path)
 
 # Get strain line data BCN
-strain_line = 'BCN'
-temperature_sensor = '_B'
+strain_line = 'TCN'
+temperature_sensor = 'TCN'
 strain_line_signals = datagetter.get_dataframe_str_subset(strain_line)
 
 # Temperature data
 temperature_data = datagetter.get_dataframe_str_subset('TFBG')
-bottom_temperature_data = temperature_data.filter(regex=temperature_sensor)
+temperature_data = temperature_data.filter(regex=temperature_sensor)
 
-num_particles = 100
-r_measurement_noise = 1e2
-q_process_noise = np.array([5e-3, 1])
-scale = 1e-3
+num_particles = 1000,
+r_measurement_noise = 1e3,
+q_process_noise = np.array([3e-1, 1e-1]),
+scale = 1
 
 
 for sensor in range(len(strain_line_signals.columns)):
-    Tb = bottom_temperature_data
+    Tb = temperature_data
     delta_Tb = Tb - Tb.shift(int(1))
 
     measurements = pd.DataFrame(
